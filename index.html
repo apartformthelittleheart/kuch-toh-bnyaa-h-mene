@@ -1,0 +1,501 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mini Universe 🌌</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background: #03030d;
+  color: white;
+  font-family: Arial, sans-serif;
+}
+
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  cursor: grab;
+}
+
+canvas:active { cursor: grabbing; }
+
+.header {
+  position: fixed;
+  top: 20px;
+  width: 100%;
+  text-align: center;
+  pointer-events: none;
+  text-shadow: 0 0 20px #8b5cff;
+}
+
+.header h1 {
+  font-size: clamp(28px, 5vw, 55px);
+  margin: 0;
+  background: linear-gradient(90deg, #36eaff, #ff70f5);
+  color: transparent;
+  background-clip: text;
+}
+
+.header p { color: #b7dfff; margin-top: 8px; }
+
+.panel {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  width: 220px;
+  padding: 16px;
+  background: #0b1025d9;
+  border: 1px solid #674cff;
+  border-radius: 16px;
+  box-shadow: 0 0 22px #5434a655;
+}
+
+.panel h3 { color: #6feaff; margin-top: 0; }
+
+.panel p { font-size: 13px; line-height: 1.7; }
+
+.controls {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 95%;
+}
+
+button {
+  background: #151633;
+  color: #fff;
+  border: 1px solid #8c69ff;
+  border-radius: 22px;
+  padding: 11px 17px;
+  cursor: pointer;
+  transition: .2s;
+}
+
+button:hover {
+  background: #5834b7;
+  box-shadow: 0 0 15px #815bff;
+}
+
+#info {
+  position: fixed;
+  right: 20px;
+  bottom: 90px;
+  width: 210px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #10152beF;
+  border: 1px solid #36eaff;
+  display: none;
+}
+
+#info h3 { color: #65eaff; margin: 0 0 8px; }
+
+.hint {
+  position: fixed;
+  bottom: 85px;
+  left: 20px;
+  color: #c3b8ff;
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
+  .panel {
+    top: 105px;
+    left: 10px;
+    width: 155px;
+    padding: 10px;
+  }
+  .panel p { font-size: 11px; }
+  .panel h3 { font-size: 14px; }
+  #info { right: 10px; width: 155px; }
+  .hint { left: 10px; bottom: 110px; max-width: 145px; }
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="universe"></canvas>
+
+<div class="header">
+  <h1>🌌 Mini Universe</h1>
+  <p>Explore • Click • Discover ✨</p>
+</div>
+
+<div class="panel">
+  <h3>⭐ Universe Facts</h3>
+  <p>
+    🌟 Stars: Billions<br>
+    🪐 Planets: Countless<br>
+    🌌 Galaxies: Billions<br>
+    🚀 Explorer: YOU!
+  </p>
+</div>
+
+<div class="hint">
+  🖱️ Drag to move<br>
+  🔍 Scroll to zoom<br>
+  🪐 Click a planet to learn
+</div>
+
+<div id="info">
+  <h3 id="planetName">Planet</h3>
+  <p id="planetText"></p>
+  <button onclick="closeInfo()">Close ✕</button>
+</div>
+
+<div class="controls">
+  <button onclick="togglePause()" id="pauseBtn">⏸ Pause</button>
+  <button onclick="changeSpeed()">⚡ Speed: 1x</button>
+  <button onclick="toggleStars()">✨ Stars: ON</button>
+  <button onclick="resetUniverse()">🔄 Reset</button>
+</div>
+
+<script>
+const canvas = document.getElementById("universe");
+const ctx = canvas.getContext("2d");
+
+let W, H, dpr;
+let zoom = 1, panX = 0, panY = 0;
+let paused = false, showStars = true;
+let speed = 1, speedIndex = 0;
+let time = 0;
+let dragging = false, moved = false;
+let lastX = 0, lastY = 0;
+let selected = null;
+
+const speeds = [1, 2, 0.5];
+
+const planets = [
+  {name:"Mercury", r:5, orbit:.12, size:5, color:"#aaa9b5",
+   fact:"The smallest planet in our Solar System. It is closest to the Sun."},
+  {name:"Venus", r:9, orbit:.19, size:8, color:"#ffbd76",
+   fact:"Venus is extremely hot and has a thick atmosphere."},
+  {name:"Earth", r:13, orbit:.27, size:10, color:"#42a5ff",
+   fact:"Our home planet! Earth is known for its liquid water and life."},
+  {name:"Mars", r:17, orbit:.35, size:8, color:"#ff654d",
+   fact:"Mars is called the Red Planet. Scientists study it for clues about ancient life."},
+  {name:"Jupiter", r:23, orbit:.46, size:19, color:"#e7b17e",
+   fact:"Jupiter is the largest planet in our Solar System."},
+  {name:"Saturn", r:29, orbit:.59, size:16, color:"#ffe0a0",
+   fact:"Saturn is famous for its spectacular ring system."},
+  {name:"Uranus", r:35, orbit:.71, size:12, color:"#72e7e8",
+   fact:"Uranus rotates on its side compared with most other planets."},
+  {name:"Neptune", r:41, orbit:.83, size:12, color:"#5279ff",
+   fact:"Neptune is a distant, cold planet with powerful winds."}
+];
+
+const stars = Array.from({length:550}, () => ({
+  x:Math.random(),
+  y:Math.random(),
+  size:Math.random()*1.8+.3,
+  phase:Math.random()*Math.PI*2
+}));
+
+function resize() {
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W*dpr;
+  canvas.height = H*dpr;
+  canvas.style.width = W+"px";
+  canvas.style.height = H+"px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+function roundRect(x,y,w,h,r) {
+  ctx.beginPath();
+  ctx.roundRect(x,y,w,h,r);
+}
+
+function drawStars() {
+  if (!showStars) return;
+  for (const s of stars) {
+    const glow = .35 + .65 *
+      (Math.sin(time*.025+s.phase)+1)/2;
+
+    ctx.globalAlpha = glow;
+    ctx.fillStyle = "#c4dfff";
+    ctx.beginPath();
+    ctx.arc(s.x*W,s.y*H,s.size,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawGalaxy(cx,cy) {
+  ctx.save();
+  ctx.translate(cx,cy);
+  ctx.rotate(time*.001);
+
+  for (let i=0;i<4;i++) {
+    ctx.beginPath();
+    ctx.ellipse(0,0,80+i*17,23+i*6,i*.3,0,Math.PI*2);
+    ctx.strokeStyle = `rgba(150,90,255,${.16-i*.025})`;
+    ctx.lineWidth = 8;
+    ctx.stroke();
+  }
+
+  const g = ctx.createRadialGradient(0,0,2,0,0,85);
+  g.addColorStop(0,"#fff1ff");
+  g.addColorStop(.18,"#d6a0ff");
+  g.addColorStop(.5,"#713bdb33");
+  g.addColorStop(1,"#25165c00");
+
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(0,0,90,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSun(cx,cy) {
+  const glow = ctx.createRadialGradient(cx,cy,2,cx,cy,90);
+  glow.addColorStop(0,"#fff9bf");
+  glow.addColorStop(.12,"#ffdd4a");
+  glow.addColorStop(.35,"#ff8800aa");
+  glow.addColorStop(1,"#ff660000");
+
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(cx,cy,90,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.save();
+  ctx.shadowColor = "#ffb52e";
+  ctx.shadowBlur = 35;
+  ctx.fillStyle = "#ffcb42";
+  ctx.beginPath();
+  ctx.arc(cx,cy,23,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPlanet(p,cx,cy,orbitRadius) {
+  const angle = time*.006/p.r;
+  const x = cx+Math.cos(angle)*orbitRadius;
+  const y = cy+Math.sin(angle)*orbitRadius*.43;
+
+  // Orbit
+  ctx.beginPath();
+  ctx.ellipse(cx,cy,orbitRadius,orbitRadius*.43,0,0,Math.PI*2);
+  ctx.strokeStyle = "rgba(100,155,255,.25)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Saturn's rings
+  if (p.name==="Saturn") {
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(-.3);
+    ctx.strokeStyle = "#ffd99b";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(0,0,p.size*1.8,p.size*.65,0,0,Math.PI*2);
+    ctx.stroke();
+    ctx.strokeStyle = "#c18bff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0,0,p.size*2.1,p.size*.8,0,0,Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Planet glow and sphere
+  ctx.save();
+  ctx.shadowColor = p.color;
+  ctx.shadowBlur = selected===p ? 30 : 12;
+
+  const g = ctx.createRadialGradient(
+    x-p.size*.35,y-p.size*.4,1,x,y,p.size*1.3
+  );
+  g.addColorStop(0,"#ffffff");
+  g.addColorStop(.18,p.color);
+  g.addColorStop(1,"#15142e");
+
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x,y,p.size,0,Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  // Small planet label
+  if (selected===p) {
+    ctx.font = "12px Arial";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(p.name,x,y-p.size-12);
+  }
+
+  p.screenX=x;
+  p.screenY=y;
+}
+
+function draw() {
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle="#03030d";
+  ctx.fillRect(0,0,W,H);
+
+  drawStars();
+
+  ctx.save();
+  ctx.translate(W/2+panX,H/2+panY);
+  ctx.scale(zoom,zoom);
+
+  drawGalaxy(-240,-140);
+  drawGalaxy(260,170);
+
+  drawSun(0,0);
+
+  // Keep orbits visible on smaller screens
+  const base = Math.min(W,H)*.44;
+
+  for (const p of planets) {
+    drawPlanet(p,0,0,base*p.orbit);
+  }
+
+  // Floating asteroid particles
+  for (let i=0;i<65;i++) {
+    const a = i*2.4+time*.001;
+    const r = base*(.30+(i%7)*.095);
+    const x = Math.cos(a)*r;
+    const y = Math.sin(a)*r*.43;
+
+    ctx.fillStyle = i%3===0 ? "#ffb779" : "#7775a8";
+    ctx.beginPath();
+    ctx.arc(x,y,(i%3)+.6,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+  requestAnimationFrame(draw);
+}
+
+function togglePause() {
+  paused=!paused;
+  document.getElementById("pauseBtn").textContent =
+    paused ? "▶ Resume" : "⏸ Pause";
+}
+
+// Use a separate animation clock so pause works
+const originalDraw = draw;
+// The animation clock advances only when not paused.
+const tick = () => {
+  if (!paused) time++;
+  requestAnimationFrame(tick);
+};
+tick();
+
+function changeSpeed() {
+  speedIndex=(speedIndex+1)%speeds.length;
+  speed=speeds[speedIndex];
+  document.querySelectorAll(".controls button")[1].textContent =
+    "⚡ Speed: "+speed+"x";
+}
+
+// Scale orbit animation speed with the chosen setting
+// The clock above advances once per frame; speed changes are
+// applied to the animation's time value here.
+let oldTime = 0;
+const speedClock = () => {
+  if (!paused) time += speed-1;
+  requestAnimationFrame(speedClock);
+};
+speedClock();
+
+function toggleStars() {
+  showStars=!showStars;
+  document.querySelectorAll(".controls button")[2].textContent =
+    showStars ? "✨ Stars: ON" : "✨ Stars: OFF";
+}
+
+function closeInfo() {
+  document.getElementById("info").style.display="none";
+  selected=null;
+}
+
+function resetUniverse() {
+  zoom=1;
+  panX=0;
+  panY=0;
+  selected=null;
+  closeInfo();
+}
+
+canvas.addEventListener("pointerdown",e=>{
+  dragging=true;
+  moved=false;
+  lastX=e.clientX;
+  lastY=e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+});
+
+canvas.addEventListener("pointermove",e=>{
+  if (!dragging) return;
+  const dx=e.clientX-lastX;
+  const dy=e.clientY-lastY;
+  if (Math.abs(dx)+Math.abs(dy)>2) moved=true;
+  panX+=dx;
+  panY+=dy;
+  lastX=e.clientX;
+  lastY=e.clientY;
+});
+
+canvas.addEventListener("pointerup",e=>{
+  dragging=false;
+  if (moved) return;
+
+  const mx=e.clientX;
+  const my=e.clientY;
+  let found=null;
+
+  for (const p of planets) {
+    const x=W/2+panX+p.screenX*zoom;
+    const y=H/2+panY+p.screenY*zoom;
+    const r=Math.max(18,p.size*zoom+5);
+
+    if (Math.hypot(mx-x,my-y)<r) {
+      found=p;
+      break;
+    }
+  }
+
+  if (found) {
+    selected=found;
+    document.getElementById("planetName").textContent =
+      "🪐 "+found.name;
+    document.getElementById("planetText").textContent =
+      found.fact;
+    document.getElementById("info").style.display="block";
+  }
+});
+
+canvas.addEventListener("wheel",e=>{
+  e.preventDefault();
+  zoom *= e.deltaY<0 ? 1.1 : .9;
+  zoom=Math.max(.45,Math.min(2.5,zoom));
+},{passive:false});
+
+window.addEventListener("keydown",e=>{
+  if (e.key.toLowerCase()==="r") resetUniverse();
+  if (e.key==="Escape") closeInfo();
+});
+
+draw();
+</script>
+</body>
+</html>
